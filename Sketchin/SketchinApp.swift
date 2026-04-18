@@ -11,7 +11,7 @@ import SwiftUI
 struct SketchinApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SketchDashboardView()
         }
     }
 }
