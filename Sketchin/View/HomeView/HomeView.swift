@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import PhotosUI
 
 struct HomeView: View {
     
@@ -14,6 +15,13 @@ struct HomeView: View {
     @State private var exploreSearchQuery: String = ""
     @State private var isMenuOpen: Bool = false
     @State private var isShowingGallery: Bool = false
+    
+
+    @State private var isShowingAddMenu: Bool = false
+    @State private var isShowingCamera: Bool = false
+    @State private var selectedImage: UIImage? = nil
+    @State private var selectedItem: PhotosPickerItem? = nil
+    @State private var navigateToTransform: Bool = false
     
     // --- 2. SELECTION MODE STATES ---
     @State private var isSelectionMode: Bool = false
@@ -30,16 +38,12 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                
-                // ==========================================
-                // BAGIAN 1: CUSTOM HEADER AREA (iOS 26 Style)
-                // ==========================================
+
                 VStack(alignment: .leading, spacing: 20) {
                     
-                    // BARIS ATAS: Tombol dinamis berdasarkan Mode
                     HStack {
                         if isSelectionMode {
-                            // --- MODE SELECT: Tombol Batal (Kiri) ---
+                
                             UIKitCircleButton(
                                 iconName: "xmark",
                                 bgColor: .systemGray4,
@@ -55,7 +59,7 @@ struct HomeView: View {
                             .frame(width: 45, height: 45)
                             
                         } else {
-                            // --- MODE NORMAL: Tombol Menu (Kiri) ---
+                  
                             UIKitCircleButton(
                                 iconName: "line.3.horizontal",
                                 bgColor: .white,
@@ -64,7 +68,6 @@ struct HomeView: View {
                                 action: { isMenuOpen.toggle() }
                             )
                             .frame(width: 45, height: 45)
-                            // Popover Menu nempel di tombol
                             .popover(isPresented: $isMenuOpen, arrowEdge: .top) {
                                 VStack(alignment: .leading, spacing: 30) {
                                     Button(action: {
@@ -94,11 +97,10 @@ struct HomeView: View {
                         Spacer()
                         
                         if isSelectionMode {
-                            // --- MODE SELECT: Tombol Hapus/Trash (Kanan) ---
                             let hasSelection = !selectedItems.isEmpty
                             UIKitCircleButton(
                                 iconName: "trash",
-                                // Menyala merah jika ada yang dipilih
+             
                                 bgColor: hasSelection ? .systemRed : .systemGray4,
                                 tintColor: hasSelection ? .white : .gray,
                                 hasShadow: hasSelection,
@@ -115,24 +117,30 @@ struct HomeView: View {
                             .frame(width: 45, height: 45)
                             
                         } else {
-                            // --- MODE NORMAL: Tombol Tambah/Plus (Kanan) ---
+                      
                             UIKitCircleButton(
                                 iconName: "plus",
                                 bgColor: .systemBlue,
                                 tintColor: .white,
                                 hasShadow: true,
-                                action: { isShowingGallery = true }
+                                action: { isShowingAddMenu = true }
                             )
                             .frame(width: 45, height: 45)
+                            .confirmationDialog("Choose Source", isPresented: $isShowingAddMenu, titleVisibility: .hidden) {
+                                Button("Camera") {
+                                    isShowingCamera = true
+                                }
+                                Button("Photos") {
+                                    isShowingGallery = true
+                                }
+                                Button("Cancel", role: .cancel) {}
+                            }
                         }
                     }
-                    
-                    // BARIS TENGAH: Judul Dinamis
                     Text(isSelectionMode ? "\(selectedItems.count) Selected" : "Gallery")
                         .font(.system(size: 40, weight: .bold))
-                        .foregroundColor(.black)
-                    
-                    // BARIS BAWAH: Search Bar (Sembunyi saat mode Select)
+                       
+                
                     if !isSelectionMode {
                         UIKitSearchBar(
                             text: $exploreSearchQuery,
@@ -146,15 +154,11 @@ struct HomeView: View {
                 .padding(.bottom, 20)
                 .background(Color(UIColor.systemGroupedBackground))
                 
-                // ==========================================
-                // BAGIAN 2: SCROLLABLE CONTENT (GRID AREA)
-                // ==========================================
                 ScrollView {
                     LazyVGrid(columns: fourColumn, spacing: 30) {
                         ForEach(0..<10, id: \.self) { index in
                             
                             ZStack {
-                                // 2A. KARTU GAMBAR & TEKS
                                 VStack {
                                     Rectangle()
                                         .fill(Color.gray.opacity(0.3))
@@ -200,13 +204,10 @@ struct HomeView: View {
                                         .scaleEffect(isSelected ? 1.15 : 1.0)
                                 }
                             }
-                            // 2C. GESTUR KLIK SEKALI PADA KARTU
                             .onTapGesture(count: 1) {
                                 if editingIndex != nil {
-                                    // Jika sedang mengetik, klik di luar akan menutup keyboard
                                     editingIndex = nil
                                 } else if isSelectionMode {
-                                    // Logika memih item saat mode Select
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                                         if selectedItems.contains(index) {
                                             selectedItems.remove(index)
@@ -227,6 +228,32 @@ struct HomeView: View {
                 .background(Color(UIColor.systemGroupedBackground))
             }
             .navigationBarHidden(true)
+            .fullScreenCover(isPresented: $isShowingCamera) {
+                CameraPicker(selectedImage: $selectedImage)
+                    .ignoresSafeArea()
+            }
+            .photosPicker(isPresented: $isShowingGallery, selection: $selectedItem, matching: .images)
+            .onChange(of: selectedItem) { _, newItem in
+                if let newItem = newItem {
+                    Task {
+                        if let data = try? await newItem.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                            await MainActor.run {
+                                selectedImage = image
+                            }
+                        }
+                    }
+                }
+            }
+            .onChange(of: selectedImage) { _, newImage in
+                if newImage != nil {
+                    navigateToTransform = true
+                }
+            }
+            .navigationDestination(isPresented: $navigateToTransform) {
+                if let selectedImage = selectedImage {
+                    LoadingView(selectedImage: selectedImage)
+                }
+            }
         }
     }
 }

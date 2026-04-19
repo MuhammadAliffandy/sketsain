@@ -9,9 +9,16 @@ import SwiftUI
 
 @main
 struct SketchinApp: App {
+    
+    @AppStorage("isFirstTime") private var isFirstTime: Bool = true
+    
     var body: some Scene {
         WindowGroup {
-            SketchDashboardView()
+            if isFirstTime {
+                SplashView()
+            }else{
+                HomeView()
+            }
         }
     }
 }

@@ -6,22 +6,23 @@
 //
 
 import SwiftUI
-import PhotosUI // 1. IMPORTANT: Import the PhotosUI framework
+import PhotosUI 
 
 struct IdleView: View {
-    
+
+    @AppStorage("isFirstTime") private var isFirstTime: Bool = true
 
     @State private var selectedCameraImage: UIImage? = nil
     @State private var selectedItem: PhotosPickerItem? = nil
+    @State private var selectedImage: UIImage? = nil
     @State private var isShowingCamera: Bool = false
     @State private var navigateToTransform: Bool  = false
-    
     
     var body: some View {
         NavigationStack{
             VStack(spacing: 30) {
                 
-                VStack(spacing: 30) {
+                VStack(spacing: 50) {
                     Text("Sketsain")
                         .font(
                             .system(
@@ -33,19 +34,19 @@ struct IdleView: View {
                     
                     HStack(spacing: 10){
                         Spacer()
-                        Image("img_default")
+                        Image("img_onboard")
                             .resizable()
                             .frame(width: 170, height: 170)
                         
                         Spacer()
                         
-                        Image("img_default")
+                        Image("img_onboard2")
                             .resizable()
                             .frame(width: 170, height: 170)
                         
                         Spacer()
                         
-                        Image("img_default")
+                        Image("img_onboard3")
                             .resizable()
                             .frame(width: 170, height: 170)
                         Spacer()
@@ -84,15 +85,25 @@ struct IdleView: View {
                             )
                             
                     }
-                    .onChange(of: selectedItem) { newItem in
-                        print("A photo was selected from the gallery!")
-                        navigateToTransform = true
+                    .onChange(of: selectedItem) { _, newItem in
+                        if let newItem = newItem {
+                            Task {
+                                if let data = try? await newItem.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                                    await MainActor.run {
+                                        selectedImage = image
+                                        navigateToTransform = true
+                                    }
+                                }
+                            }
+                        }
+                     
                     }
                     
                     
                     
                     Button(action: {
                         isShowingCamera = true
+                        isFirstTime = false
                     }){
                         Text("Camera")
                             .font(.system(size: 28, weight: .medium))
@@ -112,20 +123,25 @@ struct IdleView: View {
                 }
            
             }
+            .navigationBarHidden(true)
+            .navigationBarBackButtonHidden(true)
             .fullScreenCover(isPresented: $isShowingCamera) {
                 CameraPicker(selectedImage: $selectedCameraImage)
                     .ignoresSafeArea()
             }
-            .onChange(of: selectedCameraImage) { newImage in
-                if newImage != nil {
-                    print("A photo was taken with the camera!")
+            .onChange(of: selectedCameraImage) { _, newImage in
+                if let image = newImage {
+                    selectedImage = image
                     navigateToTransform = true
                 }
             }
+            
             .navigationDestination(isPresented: $navigateToTransform) {
-                            LoadingView()
-                
+                if let image = selectedImage {
+                    LoadingView(selectedImage: image)
+                }
             }
+            
        
       
 

@@ -8,22 +8,34 @@
 import SwiftUI
 
 struct SplashView: View {
+    
+    @State private var isReadyToNavigate: Bool = false
+    
     var body: some View {
         NavigationStack{
             VStack(spacing: 30) {
            
                 VStack(spacing : 20){
-                    
-                    NavigationLink(destination: IdleView()){
-                        Image("img_sketsain_logo")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 200, height: 200)
-                            .cornerRadius(20)
-                            .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 5)
-                    }
+                    Image("img_sketsain_logo")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 200, height: 200)
+                        .cornerRadius(20)
+                        .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 5)
+                
                 }
             }
+            .navigationDestination(
+                isPresented: $isReadyToNavigate,
+            ){
+                IdleView()
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    isReadyToNavigate = true
+                }
+            }
+            
         }
         .padding()
     }

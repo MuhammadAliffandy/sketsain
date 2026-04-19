@@ -8,15 +8,16 @@
 import SwiftUI
 
 struct LoadingView: View {
-    
+    let selectedImage: UIImage
+    @StateObject private var detector = HumanBodyPose2DDetector()
     @State private var isActive: Bool = false
-    @State private var progressValue: Float = 0.8
+    @State private var progressValue: Float = 0.1
     
     var body: some View {
         NavigationStack{
             VStack(spacing: 30) {
            
-                Image("img_default")
+                Image("img_transform")
                     .resizable()
                     .frame(width: 365, height: 365)
                 
@@ -44,19 +45,32 @@ struct LoadingView: View {
             }
             .padding()
             .onAppear {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                        withAnimation {
-                            self.isActive = true
-                        }
+                Task {
+                    withAnimation(.linear(duration: 2.0)) {
+                        progressValue = 1.0
+                    }
+                    
+                    let startTime = Date()
+                    await detector.runHumanBodyPose2DRequestOnImage(uiImage: selectedImage)
+                    
+                    let elapsed = Date().timeIntervalSince(startTime)
+                    if elapsed < 2.0 {
+                        try? await Task.sleep(nanoseconds: UInt64((2.0 - elapsed) * 1_000_000_000))
+                    }
+                    
+                    await MainActor.run {
+                        self.isActive = true
                     }
                 }
+            }
             .navigationDestination(isPresented: $isActive) {
-                    SketchDashboardView()
+                SketchDashboardView(selectedImage: selectedImage, detector: detector)
             }
         }
+        .navigationBarHidden(true)
     }
 }
 
-#Preview {
-    LoadingView()
-}
+//#Preview {
+//    LoadingView()
+//}
