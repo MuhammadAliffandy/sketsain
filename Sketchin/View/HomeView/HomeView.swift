@@ -44,9 +44,9 @@ struct HomeView: View {
                     HStack {
                         if isSelectionMode {
                 
-                            UIKitCircleButton(
+                            CircleButtonView(
                                 iconName: "xmark",
-                                bgColor: .systemGray4,
+                                bgColor: Color(uiColor: .systemGray4),
                                 tintColor: .black,
                                 hasShadow: false,
                                 action: {
@@ -60,7 +60,7 @@ struct HomeView: View {
                             
                         } else {
                   
-                            UIKitCircleButton(
+                            CircleButtonView(
                                 iconName: "line.3.horizontal",
                                 bgColor: .white,
                                 tintColor: .black,
@@ -98,10 +98,9 @@ struct HomeView: View {
                         
                         if isSelectionMode {
                             let hasSelection = !selectedItems.isEmpty
-                            UIKitCircleButton(
+                            CircleButtonView(
                                 iconName: "trash",
-             
-                                bgColor: hasSelection ? .systemRed : .systemGray4,
+                                bgColor: hasSelection ? Color(uiColor: .systemRed) : Color(uiColor: .systemGray4),
                                 tintColor: hasSelection ? .white : .gray,
                                 hasShadow: hasSelection,
                                 action: {
@@ -118,9 +117,9 @@ struct HomeView: View {
                             
                         } else {
                       
-                            UIKitCircleButton(
+                            CircleButtonView(
                                 iconName: "plus",
-                                bgColor: .systemBlue,
+                                bgColor: Color(uiColor: .systemBlue),
                                 tintColor: .white,
                                 hasShadow: true,
                                 action: { isShowingAddMenu = true }
@@ -142,11 +141,10 @@ struct HomeView: View {
                        
                 
                     if !isSelectionMode {
-                        UIKitSearchBar(
+                        SearchBarView(
                             text: $exploreSearchQuery,
                             onMicTapped: { print("Mic tapped") }
                         )
-                        .frame(height: 50)
                     }
                 }
                 .padding(.horizontal, 20)

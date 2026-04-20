@@ -55,7 +55,7 @@ struct SketchDashboardView: View {
                     // --- CUSTOM HEADER (iOS 26 Style) ---
                     HStack {
                         // Left: Custom Menu Button
-                        UIKitCircleButton(
+                        CircleButtonView(
                             iconName: "line.3.horizontal",
                             bgColor: .white,
                             tintColor: .black,
@@ -113,11 +113,11 @@ struct SketchDashboardView: View {
                         Spacer()
                         
                         // Right: Custom Pencil Toggle Button
-                        UIKitCircleButton(
+                        CircleButtonView(
                             // Dynamically change icon based on state
                             iconName: isDrawingMode ? "pencil.tip.crop.circle.fill" : "pencil.tip.crop.circle",
                             // Change background color when active
-                            bgColor: isDrawingMode ? .systemBlue : .darkGray,
+                            bgColor: isDrawingMode ? Color(uiColor: .systemBlue) : Color(uiColor: .darkGray),
                             tintColor: .white,
                             hasShadow: true,
                             action: {

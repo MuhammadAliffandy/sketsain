@@ -32,10 +32,10 @@ struct LoadingView: View {
                         .font(.system(size: 30))
                 }
                
-                UIKitProgressView(
+                ProgressIndicatorView(
                     progress: $progressValue,
-                    trackColor: .systemGray5,
-                    progressColor: .systemBlue
+                    trackColor: Color(uiColor: .systemGray5),
+                    progressColor: Color(uiColor: .systemBlue)
                 )
                 .frame(height: 50)
                 .padding(.horizontal, 120)
@@ -71,6 +71,6 @@ struct LoadingView: View {
     }
 }
 
-//#Preview {
-//    LoadingView()
-//}
+#Preview {
+    LoadingView(selectedImage: UIImage(systemName: "photo") ?? UIImage())
+}

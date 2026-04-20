@@ -1,32 +1,27 @@
 import SwiftUI
-import UIKit
 
-struct UIKitSearchBar: UIViewRepresentable {
+struct SearchBarView: View {
     @Binding var text: String
     var onMicTapped: () -> Void
 
-    func makeUIView(context: Context) -> UISearchBar {
-        let searchBar = UISearchBar()
-        searchBar.delegate = context.coordinator
-        searchBar.searchBarStyle = .minimal
-        searchBar.placeholder = "Search"
-        searchBar.showsBookmarkButton = true
-        searchBar.setImage(UIImage(systemName: "mic.fill"), for: .bookmark, state: .normal)
-        return searchBar
-    }
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
 
-    func updateUIView(_ uiView: UISearchBar, context: Context) {
-        uiView.text = text
-    }
+            TextField("Search", text: $text)
+                .textFieldStyle(.plain)
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    class Coordinator: NSObject, UISearchBarDelegate {
-        var parent: UIKitSearchBar
-        init(parent: UIKitSearchBar) { self.parent = parent }
-        func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) { parent.text = searchText }
-        func searchBarBookmarkButtonClicked(_ searchBar: UISearchBar) { parent.onMicTapped() }
+            Button(action: onMicTapped) {
+                Image(systemName: "mic.fill")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 50)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
     }
 }
