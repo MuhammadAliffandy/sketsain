@@ -16,22 +16,17 @@ struct SketchDashboardView: View {
     @State private var isDrawingMode: Bool = false
     @State private var isNavigateToHome: Bool = false
     
-    // Make sure your PencilKitCanvas struct is accessible in this file
     @State private var canvasView = PKCanvasView()
     
     var body: some View {
         
         NavigationStack {
-            
-            // Align to top so the custom floating UI stays at the top of the screen
+    
             ZStack(alignment: .top) {
                 
                 Color(UIColor.systemGray6)
                     .ignoresSafeArea()
-                
-                // ==========================================
-                // 1. COMBINED SKETCH & CANVAS LAYER
-                // ==========================================
+          
                 ZStack {
                     AnimeSketchSceneView(
                         selectedImage: selectedImage,
@@ -47,14 +42,12 @@ struct SketchDashboardView: View {
                 .ignoresSafeArea(.keyboard)
                 
                 
-                // ==========================================
-                // 2. FLOATING UI LAYER (Top Layer)
-                // ==========================================
+   
                 VStack(alignment: .leading, spacing: 20) {
                     
-                    // --- CUSTOM HEADER (iOS 26 Style) ---
+             
                     HStack {
-                        // Left: Custom Menu Button
+             
                         CircleButtonView(
                             iconName: "line.3.horizontal",
                             bgColor: .white,
@@ -66,7 +59,7 @@ struct SketchDashboardView: View {
                         )
                         .frame(width: 50, height: 50)
                         
-                        // Attach the popover menu directly to this button
+          
                         .popover(isPresented: $isMenuOpen, arrowEdge: .top) {
                             VStack(alignment: .leading, spacing: 30) {
                                 Button(action: {
