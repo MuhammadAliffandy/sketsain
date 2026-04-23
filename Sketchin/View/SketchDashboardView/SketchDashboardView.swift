@@ -30,6 +30,7 @@ struct SketchDashboardView: View {
     @State private var lastPaperOffset: CGSize = .zero
     @State private var photoOffset: CGSize = .zero
     @State private var lastPhotoOffset: CGSize = .zero
+    @State private var exportedImage: UIImage? = nil
     
     var body: some View {
         
@@ -103,13 +104,9 @@ struct SketchDashboardView: View {
                                 
                                 Button(action: {
                                     if let img = exportCombinedImage() {
-                                        let av = UIActivityViewController(activityItems: [img], applicationActivities: nil)
-                                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                                           let window = windowScene.windows.first,
-                                           let rootVC = window.rootViewController {
-                                            av.popoverPresentationController?.sourceView = rootVC.view
-                                            rootVC.present(av, animated: true)
-                                        }
+                                        exportedImage = img
+                                    } else {
+                                        print("Export failed: combined image could not be rendered.")
                                     }
                                     isMenuOpen = false
                                 }) {
@@ -169,6 +166,18 @@ struct SketchDashboardView: View {
             }
             .navigationDestination(isPresented: $isNavigateToHome){
                 HomeView()
+            }
+            .sheet(isPresented: Binding(
+                get: { exportedImage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        exportedImage = nil
+                    }
+                }
+            )) {
+                if let exportedImage {
+                    ActivityViewController(activityItems: [exportedImage])
+                }
             }
             .navigationBarHidden(true)
         }
@@ -348,6 +357,17 @@ struct SketchDashboardView: View {
     }
     
     
+}
+
+private struct ActivityViewController: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+    }
 }
 
 #Preview {
