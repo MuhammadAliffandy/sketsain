@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct SketchinApp: App {
@@ -20,5 +21,6 @@ struct SketchinApp: App {
                 HomeView()
             }
         }
+        .modelContainer(for: Sketch.self)
     }
 }

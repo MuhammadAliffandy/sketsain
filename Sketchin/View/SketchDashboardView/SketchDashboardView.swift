@@ -6,17 +6,30 @@
 //
 
 import SwiftUI
+import SwiftData
 import PencilKit
+import Vision
 
 struct SketchDashboardView: View {
     let selectedImage: UIImage
     @ObservedObject var detector: HumanBodyPose2DDetector
+    
+    @Environment(\.modelContext) private var modelContext
+    
+    var existingJoints: [JointPoint]? = nil
+    
     
     @State private var isMenuOpen: Bool = false
     @State private var isDrawingMode: Bool = false
     @State private var isNavigateToHome: Bool = false
     
     @State private var canvasView = PKCanvasView()
+    @State private var paperScale: CGFloat = 1.0
+    @State private var lastPaperScale: CGFloat = 1.0
+    @State private var paperOffset: CGSize = .zero
+    @State private var lastPaperOffset: CGSize = .zero
+    @State private var photoOffset: CGSize = .zero
+    @State private var lastPhotoOffset: CGSize = .zero
     
     var body: some View {
         
@@ -31,6 +44,7 @@ struct SketchDashboardView: View {
                     AnimeSketchSceneView(
                         selectedImage: selectedImage,
                         detector: detector,
+                        savedJoints: existingJoints ?? [],
                         selectedStyle: .manga
                     )
                     
@@ -38,8 +52,11 @@ struct SketchDashboardView: View {
                         .allowsHitTesting(isDrawingMode)
                 }
                 .aspectRatio(selectedImage.size.width > 0 ? selectedImage.size : CGSize(width: 3, height: 4), contentMode: .fit)
+                .scaleEffect(paperScale)
+                .offset(paperOffset)
                 .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 10)
                 .ignoresSafeArea(.keyboard)
+                .gesture(isDrawingMode ? nil : paperTransformGesture)
                 
                 
    
@@ -73,9 +90,11 @@ struct SketchDashboardView: View {
                                         .foregroundColor(.primary)
                                 }
                                 Button(action: {
-                                    if let img = exportCombinedImage() {
-                                        UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
-                                    }
+//                                    if let img = exportCombinedImage() {
+//                                        UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
+//                                    }
+                                    saveSketchProject()
+                                    
                                     isMenuOpen = false
                                 }) {
                                     Label("Save", systemImage: "square.and.arrow.down")
@@ -133,7 +152,19 @@ struct SketchDashboardView: View {
                         .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 5)
                         .padding(.horizontal, 20)
                         .clipped()
+                        .offset(photoOffset)
+                        .gesture(photoDragGesture)
                     
+                }
+            }
+            .onAppear {
+                if let savedJoints = existingJoints, !savedJoints.isEmpty {
+                    print("📸 Dashboard muncul, menggunakan \(savedJoints.count) titik AI yang tersimpan.")
+                } else {
+                    Task {
+                        await detector.runHumanBodyPose2DRequestOnImage(uiImage: selectedImage)
+                    }
+                    print("📸 Dashboard muncul dengan gambar ukuran: \(selectedImage.size), menjalankan AI deteksi.")
                 }
             }
             .navigationDestination(isPresented: $isNavigateToHome){
@@ -156,6 +187,7 @@ struct SketchDashboardView: View {
         let rendererView = AnimeSketchSceneView(
             selectedImage: selectedImage,
             detector: detector,
+            savedJoints: existingJoints ?? [],
             selectedStyle: .manga
         )
         .frame(width: size.width, height: size.height)
@@ -178,6 +210,144 @@ struct SketchDashboardView: View {
         
         return finalImage
     }
+    
+    private func saveToFileManager(image: UIImage , fileName: String) -> URL? {
+        guard let data = image.pngData() else {
+            return nil
+        }
+        
+        let paths = FileManager.default.urls(
+            for: .documentDirectory, in: .userDomainMask
+        )
+        let documentsDirectory = paths[0]
+        
+        let fileUrl = documentsDirectory.appendingPathComponent("\(fileName).png")
+        
+        do{
+            try data.write(to: fileUrl)
+            return fileUrl
+        }catch{
+            print("File Manager error : \(error)")
+            return nil
+        }
+        
+    }
+    
+    
+    private func saveSketchProject()  {
+        let fileName = "Sketch_\(UUID().uuidString)"
+        
+        guard saveToFileManager(image: selectedImage, fileName: fileName) != nil else
+        {
+            print("Failed rendered data image")
+            return
+        }
+        
+        var jointArrays: [JointPoint] = []
+        
+        guard let observation = detector.humanObservation,
+              let recognizePoints = try? observation.recognizedPoints(.all) else{
+            print("AI data observation not found")
+            return
+        }
+        
+        
+        for (jointName, point) in recognizePoints {
+            if point.confidence > 0.2 {
+                let newJoint = JointPoint(
+                    jointName: jointName.rawValue.rawValue, coordinateX: point.location.x, coordinateY: point.location.y, depthZ: 0.0
+                )
+                
+                jointArrays.append(newJoint)
+            }
+        }
+        
+        
+        let newProject = Sketch(
+            title: fileName,
+            imageFileName: fileName,
+            jointData: jointArrays
+        )
+        
+        modelContext.insert(newProject)
+    
+        print("SAVE SUCCESS")
+        printDatabaseStatusToConsole()
+    }
+    
+    
+    // MARK: - Debugging Tools
+        
+        private func printDatabaseStatusToConsole() {
+            do {
+                // 1. Create a request to fetch ALL Sketch data
+                let fetchRequest = FetchDescriptor<Sketch>()
+                
+                // 2. Execute the fetch using our modelContext
+                let allSketches = try modelContext.fetch(fetchRequest)
+                
+                // 3. Print the results beautifully to the Xcode Console!
+                print("\n==============================================")
+                print("🗄️ SWIFTDATA DATABASE STATUS")
+                print("Total Saved Projects: \(allSketches.count)")
+                print("----------------------------------------------")
+                
+                for (index, sketch) in allSketches.enumerated() {
+                    print("[\(index + 1)] Title  : \(sketch.title)")
+                    print("    Image  : \(sketch.imageFileName).png")
+                    print("    Joints : \(sketch.jointData.count) points saved")
+                    
+                    // Print a sample of the first joint just to prove the data is real
+                    if let firstJoint = sketch.jointData.first {
+                        let formattedX = String(format: "%.2f", firstJoint.coordinateX)
+                        let formattedY = String(format: "%.2f", firstJoint.coordinateY)
+                        print("    Sample : \(firstJoint.jointName) is at (X: \(formattedX), Y: \(formattedY))")
+                    }
+                    print("----------------------------------------------")
+                }
+                print("==============================================\n")
+                
+            } catch {
+                print("❌ Failed to fetch database records: \(error)")
+            }
+        }
+
+    private var paperTransformGesture: some Gesture {
+        SimultaneousGesture(
+            DragGesture()
+                .onChanged { value in
+                    paperOffset = CGSize(
+                        width: lastPaperOffset.width + value.translation.width,
+                        height: lastPaperOffset.height + value.translation.height
+                    )
+                }
+                .onEnded { _ in
+                    lastPaperOffset = paperOffset
+                },
+            MagnificationGesture()
+                .onChanged { value in
+                    paperScale = min(max(lastPaperScale * value, 0.7), 2.5)
+                }
+                .onEnded { _ in
+                    lastPaperScale = paperScale
+                }
+        )
+    }
+
+    private var photoDragGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                photoOffset = CGSize(
+                    width: lastPhotoOffset.width + value.translation.width,
+                    height: lastPhotoOffset.height + value.translation.height
+                )
+            }
+            .onEnded { _ in
+                lastPhotoOffset = photoOffset
+            }
+    }
+    
+    
 }
 
 #Preview {

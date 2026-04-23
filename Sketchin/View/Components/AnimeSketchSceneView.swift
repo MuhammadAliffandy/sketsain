@@ -3,6 +3,7 @@ import SwiftUI
 struct AnimeSketchSceneView: View {
     let selectedImage: UIImage
     @ObservedObject var detector: HumanBodyPose2DDetector
+    var savedJoints: [JointPoint] = []
 
     var selectedStyle: AnimeSketchRenderer.SketchStyle = .manga
     var showSourceImage: Bool = false
@@ -20,6 +21,7 @@ struct AnimeSketchSceneView: View {
 
             AnimeSketchRenderer(
                 observation: detector.humanObservation,
+                savedJoints: savedJoints,
                 style: selectedStyle,
                 limbScale: detector.bodyScale,
                 limbWidthProfile: detector.limbWidthProfile,

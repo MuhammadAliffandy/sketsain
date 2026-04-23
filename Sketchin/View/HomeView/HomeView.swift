@@ -6,17 +6,23 @@
 //
 
 import SwiftUI
+import SwiftData
 import UIKit
 import PhotosUI
 
 struct HomeView: View {
     
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Sketch.createdAt, order: .reverse) private var savedSketches: [Sketch]
+    
+    
     // --- 1. GENERAL STATES ---
     @State private var exploreSearchQuery: String = ""
     @State private var isMenuOpen: Bool = false
     @State private var isShowingGallery: Bool = false
+    @State private var sketchToOpen: Sketch? = nil
     
-
+    
     @State private var isShowingAddMenu: Bool = false
     @State private var isShowingCamera: Bool = false
     @State private var selectedImage: UIImage? = nil
@@ -25,12 +31,13 @@ struct HomeView: View {
     
     // --- 2. SELECTION MODE STATES ---
     @State private var isSelectionMode: Bool = false
-    @State private var selectedItems: Set<Int> = []
+    @State private var selectedItems: Set<UUID> = []
     
     // --- 3. RENAME FEATURE STATES ---
-    // Menyimpan 10 judul default awal
-    @State private var itemTitles: [String] = (0..<10).map { "Title \($0)" }
-    @State private var editingIndex: Int? = nil
+    
+    
+    @State private var editingSketchID: UUID? = nil
+    @State private var editTitleText: String = ""
     @FocusState private var isTextFieldFocused: Bool
     
     let fourColumn = Array(repeating: GridItem(.flexible(), spacing: 30), count: 4)
@@ -38,12 +45,12 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-
+                
                 VStack(alignment: .leading, spacing: 20) {
                     
                     HStack {
                         if isSelectionMode {
-                
+                            
                             CircleButtonView(
                                 iconName: "xmark",
                                 bgColor: Color(uiColor: .systemGray4),
@@ -59,39 +66,8 @@ struct HomeView: View {
                             .frame(width: 45, height: 45)
                             
                         } else {
-                  
-                            CircleButtonView(
-                                iconName: "line.3.horizontal",
-                                bgColor: .white,
-                                tintColor: .black,
-                                hasShadow: true,
-                                action: { isMenuOpen.toggle() }
-                            )
-                            .frame(width: 45, height: 45)
-                            .popover(isPresented: $isMenuOpen, arrowEdge: .top) {
-                                VStack(alignment: .leading, spacing: 30) {
-                                    Button(action: {
-                                        isMenuOpen = false
-                                        withAnimation(.spring()) {
-                                            isSelectionMode = true
-                                        }
-                                    }) {
-                                        Label("Select", systemImage: "checkmark.circle")
-                                            .foregroundColor(.primary)
-                                    }
-                                    
-                                    Button(action: {
-                                        print("App closing...")
-                                        exit(0) // Menutup aplikasi (Testing only)
-                                    }) {
-                                        Label("Close App", systemImage: "xmark.circle")
-                                            .foregroundColor(.red)
-                                    }
-                                }
-                                .padding(20)
-                                .frame(width: 200)
-                                .presentationCornerRadius(15)
-                            }
+                            
+                            //
                         }
                         
                         Spacer()
@@ -105,18 +81,15 @@ struct HomeView: View {
                                 hasShadow: hasSelection,
                                 action: {
                                     if hasSelection {
-                                        print("Menghapus item: \(selectedItems)")
-                                        withAnimation(.spring()) {
-                                            isSelectionMode = false
-                                            selectedItems.removeAll()
-                                        }
+                                        // that the flow for downloading items
+                                        deleteSelectedItems()
                                     }
                                 }
                             )
                             .frame(width: 45, height: 45)
                             
                         } else {
-                      
+                            
                             CircleButtonView(
                                 iconName: "plus",
                                 bgColor: Color(uiColor: .systemBlue),
@@ -138,8 +111,8 @@ struct HomeView: View {
                     }
                     Text(isSelectionMode ? "\(selectedItems.count) Selected" : "Gallery")
                         .font(.system(size: 40, weight: .bold))
-                       
-                
+                    
+                    
                     if !isSelectionMode {
                         SearchBarView(
                             text: $exploreSearchQuery,
@@ -153,75 +126,53 @@ struct HomeView: View {
                 .background(Color(UIColor.systemGroupedBackground))
                 
                 ScrollView {
-                    LazyVGrid(columns: fourColumn, spacing: 30) {
-                        ForEach(0..<10, id: \.self) { index in
+                    if savedSketches.isEmpty{
+                        VStack(spacing: 20){
+                            Spacer()
                             
-                            ZStack {
-                                VStack {
-                                    Rectangle()
-                                        .fill(Color.gray.opacity(0.3))
-                                        .aspectRatio(1, contentMode: .fit)
-                                        .cornerRadius(10)
+                            
+                            VStack(spacing: 20){
+                                Image(systemName: "photo.on.rectangle.angled")
+                                    .font(.system(size: 60))
+                                    .foregroundStyle(.secondary)
+                                Text("No Sketces Yet")
+                                    .font(.title2)
+                                    .bold()
+                                    .foregroundStyle(.secondary)
                                     
-                                    // Logika Ganti Nama (Rename)
-                                    if editingIndex == index {
-                                        TextField("Masukkan judul", text: $itemTitles[index])
-                                            .font(.headline)
-                                            .multilineTextAlignment(.center)
-                                            .focused($isTextFieldFocused)
-                                            .onSubmit { editingIndex = nil }
-                                            .padding(4)
-                                            .background(Color.gray.opacity(0.1))
-                                            .cornerRadius(5)
-                                    } else {
-                                        Text(itemTitles[index])
-                                            .font(.headline)
-                                            // Klik ganda untuk memunculkan keyboard
-                                            .onTapGesture(count: 2) {
-                                                if !isSelectionMode {
-                                                    editingIndex = index
-                                                    isTextFieldFocused = true
-                                                }
-                                            }
-                                    }
-                                    
-                                    Text("Subtitle")
-                                        .font(.subheadline)
-                                        .foregroundColor(.gray)
-                                }
-                                // Meredupkan kartu jika mode select aktif tapi tidak dipilih
-                                .opacity(isSelectionMode && !selectedItems.contains(index) ? 0.6 : 1.0)
-                                
-                                // 2B. INDIKATOR LINGKARAN PILIHAN (Tengah)
-                                if isSelectionMode {
-                                    let isSelected = selectedItems.contains(index)
-                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 34, weight: .regular))
-                                        .foregroundColor(isSelected ? .blue : .white)
-                                        .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 2)
-                                        .scaleEffect(isSelected ? 1.15 : 1.0)
-                                }
+                                Text("Tap the + button to create your first mannequin")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
                             }
-                            .onTapGesture(count: 1) {
-                                if editingIndex != nil {
-                                    editingIndex = nil
-                                } else if isSelectionMode {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                                        if selectedItems.contains(index) {
-                                            selectedItems.remove(index)
-                                        } else {
-                                            selectedItems.insert(index)
-                                        }
-                                    }
-                                } else {
-                                    // Buka file saat mode normal
-                                    print("Membuka Sketsa nomor \(index)")
-                                }
-                            }
+                            .padding()
+                         
                             
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                       
+                    
+                        
+                    } else {
+                        LazyVGrid(columns: fourColumn, spacing: 30) {
+                            ForEach(savedSketches) { sketch in
+                                SketchCardView(
+                                    sketch: sketch,
+                                    isSelectionMode: $isSelectionMode,
+                                    selectedItems: $selectedItems,
+                                    editingSketchID: $editingSketchID,
+                                    editTitleText: $editTitleText,
+                                    onSaveRename: {
+                                        saveRenamedTitle(for: sketch)
+                                    },
+                                    onOpenSketch: {
+                                        sketchToOpen = sketch
+                                    }
+                                )
+                                // Move long press logic into the card struct
+                            }
+                        }
+                        .padding(20)
                     }
-                    .padding(20)
                 }
                 .background(Color(UIColor.systemGroupedBackground))
             }
@@ -247,6 +198,20 @@ struct HomeView: View {
                     navigateToTransform = true
                 }
             }
+            
+            .navigationDestination(item: $sketchToOpen, destination: {
+                selectedSketch in
+
+                let fileName = selectedSketch.imageFileName
+                let savedImage = loadImageFromDisk(fileName: fileName) ?? UIImage()
+            
+                SketchDashboardView(
+                    selectedImage: savedImage,
+                    detector: HumanBodyPose2DDetector(),
+                    existingJoints: selectedSketch.jointData
+                )
+            })
+            
             .navigationDestination(isPresented: $navigateToTransform) {
                 if let selectedImage = selectedImage {
                     LoadingView(selectedImage: selectedImage)
@@ -254,7 +219,42 @@ struct HomeView: View {
             }
         }
     }
+    
+   
+    private func loadImageFromDisk(fileName: String) -> UIImage? {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        let fileURL = paths[0].appendingPathComponent("\(fileName).png")
+        return UIImage(contentsOfFile: fileURL.path)
+    }
+   
+    
+    private func deleteSelectedItems() {
+            withAnimation(.spring()) {
+                for sketch in savedSketches {
+                    if selectedItems.contains(sketch.id) {
+                        // Delete from database
+                        modelContext.delete(sketch)
+                        
+                        // 🟢 FIX: File deletion MUST be inside the if statement
+                        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+                        let fileURL = paths[0].appendingPathComponent("\(sketch.imageFileName).png")
+                        try? FileManager.default.removeItem(at: fileURL)
+                    }
+                }
+                selectedItems.removeAll()
+                isSelectionMode = false
+                try? modelContext.save()
+            }
+        }
+        
+    private func saveRenamedTitle(for sketch: Sketch){
+        sketch.title = editTitleText
+        try? modelContext.save()
+        editingSketchID = nil
+    }
+    
 }
+
 
 
 #Preview {

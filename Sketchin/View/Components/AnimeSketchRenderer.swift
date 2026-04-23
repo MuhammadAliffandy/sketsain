@@ -11,6 +11,7 @@ struct AnimeSketchRenderer: View {
     }
 
     var observation: VNHumanBodyPoseObservation?
+    var savedJoints: [JointPoint] = []
     var style: SketchStyle = .clean
     var elongateLegsRatio: CGFloat = 1.18
     var limbScale: CGFloat = 1.0
@@ -25,51 +26,54 @@ struct AnimeSketchRenderer: View {
         let width: CGFloat
     }
 
+    private var isRenderingSavedPose: Bool {
+        observation == nil && !savedJoints.isEmpty
+    }
+
+    private var activeLimbScale: CGFloat {
+        isRenderingSavedPose ? computeBodyScale(from: savedJointPoints) : limbScale
+    }
+
+    private var activeLimbWidthProfile: PoseLimbWidthProfile {
+        isRenderingSavedPose ? computeLimbWidthProfile(from: savedJointPoints) : limbWidthProfile
+    }
+
+    private var savedJointPoints: [VNHumanBodyPoseObservation.JointName: CGPoint] {
+        savedJoints.reduce(into: [:]) { partialResult, joint in
+            let key = VNRecognizedPointKey(rawValue: joint.jointName)
+            let jointName = VNHumanBodyPoseObservation.JointName(rawValue: key)
+            partialResult[jointName] = CGPoint(x: joint.coordinateX, y: joint.coordinateY)
+        }
+    }
+
     var body: some View {
         SwiftUI.Canvas { context, size in
-            guard let obs = observation else { return }
-            guard let recognizedPoints = try? obs.recognizedPoints(.all) else { return }
-
-            var mappedPoints: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
-
             let transformToCanvas = { (point: CGPoint) -> CGPoint in
                 CGPoint(x: point.x * size.width, y: (1.0 - point.y) * size.height)
             }
 
-            var rootCanvasY: CGFloat = size.height * 0.5
-            if let root = recognizedPoints[.root], root.confidence > 0.2 {
-                rootCanvasY = transformToCanvas(root.location).y
-            }
-
-            for (jointName, point) in recognizedPoints where point.confidence > 0.2 {
-                var canvasPoint = transformToCanvas(point.location)
-                if canvasPoint.y > rootCanvasY {
-                    let diff = canvasPoint.y - rootCanvasY
-                    canvasPoint.y = rootCanvasY + (diff * elongateLegsRatio)
-                }
-                mappedPoints[jointName] = canvasPoint
-            }
+            let mappedPoints = makeMappedPoints(size: size, transformToCanvas: transformToCanvas)
 
             guard !mappedPoints.isEmpty else { return }
 
-            let adaptiveScale = max(0.72, min(1.95, limbScale))
+            let adaptiveScale = max(0.72, min(1.95, activeLimbScale))
             let canvasReference = min(size.width, size.height)
             drawTorso(
                 context: &context,
                 points: mappedPoints,
-                torsoWidthScale: limbWidthProfile.torso * canvasReference * adaptiveScale
+                torsoWidthScale: activeLimbWidthProfile.torso * canvasReference * adaptiveScale
             )
             drawJointLineArt(context: &context, points: mappedPoints)
 
             let segments: [Segment] = [
-                Segment(a: .leftShoulder, b: .leftElbow, width: limbWidthProfile.upperArm * canvasReference * adaptiveScale),
-                Segment(a: .leftElbow, b: .leftWrist, width: limbWidthProfile.lowerArm * canvasReference * adaptiveScale),
-                Segment(a: .rightShoulder, b: .rightElbow, width: limbWidthProfile.upperArm * canvasReference * adaptiveScale),
-                Segment(a: .rightElbow, b: .rightWrist, width: limbWidthProfile.lowerArm * canvasReference * adaptiveScale),
-                Segment(a: .leftHip, b: .leftKnee, width: limbWidthProfile.upperLeg * canvasReference * adaptiveScale),
-                Segment(a: .leftKnee, b: .leftAnkle, width: limbWidthProfile.lowerLeg * canvasReference * adaptiveScale),
-                Segment(a: .rightHip, b: .rightKnee, width: limbWidthProfile.upperLeg * canvasReference * adaptiveScale),
-                Segment(a: .rightKnee, b: .rightAnkle, width: limbWidthProfile.lowerLeg * canvasReference * adaptiveScale)
+                Segment(a: .leftShoulder, b: .leftElbow, width: activeLimbWidthProfile.upperArm * canvasReference * adaptiveScale),
+                Segment(a: .leftElbow, b: .leftWrist, width: activeLimbWidthProfile.lowerArm * canvasReference * adaptiveScale),
+                Segment(a: .rightShoulder, b: .rightElbow, width: activeLimbWidthProfile.upperArm * canvasReference * adaptiveScale),
+                Segment(a: .rightElbow, b: .rightWrist, width: activeLimbWidthProfile.lowerArm * canvasReference * adaptiveScale),
+                Segment(a: .leftHip, b: .leftKnee, width: activeLimbWidthProfile.upperLeg * canvasReference * adaptiveScale),
+                Segment(a: .leftKnee, b: .leftAnkle, width: activeLimbWidthProfile.lowerLeg * canvasReference * adaptiveScale),
+                Segment(a: .rightHip, b: .rightKnee, width: activeLimbWidthProfile.upperLeg * canvasReference * adaptiveScale),
+                Segment(a: .rightKnee, b: .rightAnkle, width: activeLimbWidthProfile.lowerLeg * canvasReference * adaptiveScale)
             ]
 
             for segment in segments {
@@ -89,6 +93,141 @@ struct AnimeSketchRenderer: View {
                 drawJointConstruction(context: &context, points: mappedPoints)
             }
         }
+    }
+
+    private func makeMappedPoints(
+        size: CGSize,
+        transformToCanvas: (CGPoint) -> CGPoint
+    ) -> [VNHumanBodyPoseObservation.JointName: CGPoint] {
+        if let observation,
+           let recognizedPoints = try? observation.recognizedPoints(.all) {
+            return mapRecognizedPoints(recognizedPoints, size: size, transformToCanvas: transformToCanvas)
+        }
+
+        return mapRecognizedPoints(savedJointPoints, size: size, transformToCanvas: transformToCanvas)
+    }
+
+    private func mapRecognizedPoints(
+        _ recognizedPoints: [VNHumanBodyPoseObservation.JointName: CGPoint],
+        size: CGSize,
+        transformToCanvas: (CGPoint) -> CGPoint
+    ) -> [VNHumanBodyPoseObservation.JointName: CGPoint] {
+        var mappedPoints: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
+
+        var rootCanvasY: CGFloat = size.height * 0.5
+        if let root = recognizedPoints[.root] {
+            rootCanvasY = transformToCanvas(root).y
+        }
+
+        for (jointName, point) in recognizedPoints {
+            var canvasPoint = transformToCanvas(point)
+            if canvasPoint.y > rootCanvasY {
+                let diff = canvasPoint.y - rootCanvasY
+                canvasPoint.y = rootCanvasY + (diff * elongateLegsRatio)
+            }
+            mappedPoints[jointName] = canvasPoint
+        }
+
+        return mappedPoints
+    }
+
+    private func mapRecognizedPoints(
+        _ recognizedPoints: [VNHumanBodyPoseObservation.JointName: VNRecognizedPoint],
+        size: CGSize,
+        transformToCanvas: (CGPoint) -> CGPoint
+    ) -> [VNHumanBodyPoseObservation.JointName: CGPoint] {
+        let validPoints = recognizedPoints.compactMapValues { point -> CGPoint? in
+            point.confidence > 0.2 ? point.location : nil
+        }
+
+        return mapRecognizedPoints(validPoints, size: size, transformToCanvas: transformToCanvas)
+    }
+
+    private func computeBodyScale(
+        from points: [VNHumanBodyPoseObservation.JointName: CGPoint]
+    ) -> CGFloat {
+        guard let leftShoulder = points[.leftShoulder],
+              let rightShoulder = points[.rightShoulder],
+              let leftHip = points[.leftHip],
+              let rightHip = points[.rightHip] else {
+            return 1.0
+        }
+
+        let shoulderWidth = hypot(
+            leftShoulder.x - rightShoulder.x,
+            leftShoulder.y - rightShoulder.y
+        )
+        let hipWidth = hypot(
+            leftHip.x - rightHip.x,
+            leftHip.y - rightHip.y
+        )
+        let bodyWidth = max((shoulderWidth + hipWidth) * 0.5, 0.001)
+        return max(0.72, min(1.95, bodyWidth / 0.23))
+    }
+
+    private func computeLimbWidthProfile(
+        from points: [VNHumanBodyPoseObservation.JointName: CGPoint]
+    ) -> PoseLimbWidthProfile {
+        guard !points.isEmpty else {
+            return .fallback
+        }
+
+        let shoulderSpan = averageDistance(points, pairs: [(.leftShoulder, .rightShoulder)])
+        let hipSpan = averageDistance(points, pairs: [(.leftHip, .rightHip)])
+        let torsoHeight = averageDistance(
+            points,
+            pairs: [(.leftShoulder, .leftHip), (.rightShoulder, .rightHip)]
+        )
+        let upperArmLength = averageDistance(
+            points,
+            pairs: [(.leftShoulder, .leftElbow), (.rightShoulder, .rightElbow)]
+        )
+        let lowerArmLength = averageDistance(
+            points,
+            pairs: [(.leftElbow, .leftWrist), (.rightElbow, .rightWrist)]
+        )
+        let upperLegLength = averageDistance(
+            points,
+            pairs: [(.leftHip, .leftKnee), (.rightHip, .rightKnee)]
+        )
+        let lowerLegLength = averageDistance(
+            points,
+            pairs: [(.leftKnee, .leftAnkle), (.rightKnee, .rightAnkle)]
+        )
+
+        let frameWidth = max((shoulderSpan * 0.58) + (hipSpan * 0.42), 0.001)
+        let torsoMass = max((torsoHeight * 0.55) + (frameWidth * 0.45), 0.001)
+
+        return PoseLimbWidthProfile(
+            upperArm: clamp((frameWidth * 0.084) + (upperArmLength * 0.038), min: 0.013, max: 0.041),
+            lowerArm: clamp((frameWidth * 0.066) + (lowerArmLength * 0.028), min: 0.011, max: 0.034),
+            upperLeg: clamp((hipSpan * 0.134) + (upperLegLength * 0.062) + (torsoMass * 0.010), min: 0.019, max: 0.056),
+            lowerLeg: clamp((hipSpan * 0.098) + (lowerLegLength * 0.039), min: 0.015, max: 0.045),
+            torso: clamp((frameWidth * 0.540) + (torsoHeight * 0.190), min: 0.084, max: 0.210)
+        )
+    }
+
+    private func averageDistance(
+        _ points: [VNHumanBodyPoseObservation.JointName: CGPoint],
+        pairs: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)]
+    ) -> CGFloat {
+        let distances = pairs.compactMap { a, b -> CGFloat? in
+            guard let pointA = points[a], let pointB = points[b] else {
+                return nil
+            }
+
+            return hypot(pointA.x - pointB.x, pointA.y - pointB.y)
+        }
+
+        guard !distances.isEmpty else {
+            return 0
+        }
+
+        return distances.reduce(CGFloat.zero, +) / CGFloat(distances.count)
+    }
+
+    private func clamp(_ value: CGFloat, min lower: CGFloat, max upper: CGFloat) -> CGFloat {
+        Swift.max(lower, Swift.min(upper, value))
     }
 
     private var styleOffsets: [CGFloat] {
