@@ -388,8 +388,8 @@ struct AnimeSketchRenderer: View {
             endRadius = width * 1.16
         } else if isUpperArm {
             // Bicep/tricep region
-            startRadius = width * 2.52
-            endRadius = width * 2.16
+            startRadius = width * 1.72
+            endRadius = width * 1.34
         } else {
             // Forearm: slightly thinner than upper arm
             startRadius = width * 1.28
@@ -531,20 +531,18 @@ struct AnimeSketchRenderer: View {
         let rightEye = points[.rightEye]
         let leftEar = points[.leftEar]
         let rightEar = points[.rightEar]
+        let visibleEyeCount = (leftEye != nil ? 1 : 0) + (rightEye != nil ? 1 : 0)
+        let visibleEarCount = (leftEar != nil ? 1 : 0) + (rightEar != nil ? 1 : 0)
+        let isLikelyProfile = visibleEyeCount <= 1 || visibleEarCount == 1
 
-        var widthCandidates: [CGFloat] = []
-
-        if let lEye = leftEye, let rEye = rightEye {
-            widthCandidates.append(hypot(lEye.x - rEye.x, lEye.y - rEye.y) * 1.62)
+        let shoulderMidX: CGFloat
+        if let leftShoulder, let rightShoulder {
+            shoulderMidX = (leftShoulder.x + rightShoulder.x) * 0.5
+        } else {
+            shoulderMidX = neck.x
         }
 
-        if let lEar = leftEar, let rEar = rightEar {
-            widthCandidates.append(hypot(lEar.x - rEar.x, lEar.y - rEar.y) * 0.98)
-        }
-
-        widthCandidates.append(shoulderWidth * 0.40)
-
-        var detectedFaceWidth: CGFloat?
+        // 1. Process face bounding box to canvas coordinates.
         var faceRectFromDetection: CGRect?
         if let faceBox = detectedFaceBoundingBox {
             let width = faceBox.width * canvasSize.width
@@ -552,46 +550,110 @@ struct AnimeSketchRenderer: View {
             let x = faceBox.origin.x * canvasSize.width
             let y = (1.0 - faceBox.origin.y - faceBox.height) * canvasSize.height
             faceRectFromDetection = CGRect(x: x, y: y, width: width, height: height)
-            detectedFaceWidth = width
         }
 
-        let rawWidth = widthCandidates.reduce(0, +) / CGFloat(max(widthCandidates.count, 1))
-        let minWidth = shoulderWidth * 0.20
-        let maxWidth = shoulderWidth * 0.54
+        let headWidth: CGFloat
+        let headHeight: CGFloat
 
-        let headDiameter: CGFloat
-        if let faceWidth = detectedFaceWidth {
-            // Prioritize face detection for stable head proportion.
-            headDiameter = max(minWidth, min(maxWidth, faceWidth * 1.04))
+        let poseAnchoredCenter: CGPoint
+        if let lEye = leftEye, let rEye = rightEye {
+            let eyeCenter = CGPoint(x: (lEye.x + rEye.x) * 0.5, y: (lEye.y + rEye.y) * 0.5)
+            poseAnchoredCenter = CGPoint(
+                x: (eyeCenter.x * 0.78) + (shoulderMidX * 0.22),
+                y: eyeCenter.y
+            )
+        } else if isLikelyProfile, let visibleEye = leftEye ?? rightEye {
+            poseAnchoredCenter = CGPoint(
+                x: (visibleEye.x * 0.82) + (shoulderMidX * 0.18),
+                y: visibleEye.y
+            )
+        } else if let n = nose {
+            poseAnchoredCenter = CGPoint(
+                x: (n.x * 0.72) + (shoulderMidX * 0.28),
+                y: n.y
+            )
         } else {
-            let poseBasedWidth = max(minWidth, min(maxWidth, rawWidth))
-            let neckToNose = nose.map { hypot(neck.x - $0.x, neck.y - $0.y) } ?? (poseBasedWidth * 0.30)
-            headDiameter = max(minWidth, min(maxWidth, max(poseBasedWidth, neckToNose * 1.45)))
+            poseAnchoredCenter = CGPoint(x: shoulderMidX, y: neck.y)
         }
 
         let center: CGPoint
+
+        // 2. Determine head size and position.
         if let faceRect = faceRectFromDetection {
-            center = CGPoint(x: faceRect.midX, y: faceRect.midY)
-        } else if let lEye = leftEye, let rEye = rightEye {
-            let eyeCenter = CGPoint(x: (lEye.x + rEye.x) * 0.5, y: (lEye.y + rEye.y) * 0.5)
-            center = CGPoint(x: eyeCenter.x, y: eyeCenter.y - headDiameter * 0.14)
-        } else if let n = nose {
-            center = CGPoint(x: n.x, y: n.y - headDiameter * 0.18)
+            let minWidth = shoulderWidth * (isLikelyProfile ? 0.21 : 0.24)
+            let maxWidth = shoulderWidth * (isLikelyProfile ? 0.44 : 0.50)
+            let minHeight = shoulderWidth * (isLikelyProfile ? 0.26 : 0.30)
+            let maxHeight = shoulderWidth * (isLikelyProfile ? 0.56 : 0.64)
+            let widthScale = isLikelyProfile ? 1.10 : 1.18
+            let heightScale = isLikelyProfile ? 1.42 : 1.56
+            headWidth = max(minWidth, min(maxWidth, faceRect.width * widthScale))
+            headHeight = max(minHeight, min(maxHeight, faceRect.height * heightScale))
+
+            let targetCenterY = neck.y - headHeight * (isLikelyProfile ? 0.30 : 0.33)
+            let preferredFaceX = faceRect.midX
+            let blendedX = (preferredFaceX * (isLikelyProfile ? 0.38 : 0.28)) + (poseAnchoredCenter.x * (isLikelyProfile ? 0.62 : 0.72))
+            let clampedX = min(
+                max(blendedX, shoulderMidX - shoulderWidth * (isLikelyProfile ? 0.38 : 0.34)),
+                shoulderMidX + shoulderWidth * (isLikelyProfile ? 0.38 : 0.34)
+            )
+            let clampedY = min(max(targetCenterY, neck.y - headHeight * (isLikelyProfile ? 0.48 : 0.54)),
+                               neck.y - headHeight * (isLikelyProfile ? 0.16 : 0.20))
+
+            center = CGPoint(x: clampedX, y: clampedY)
         } else {
-            center = CGPoint(x: neck.x, y: neck.y - headDiameter * 0.40)
+            var widthCandidates: [CGFloat] = []
+            var heightCandidates: [CGFloat] = []
+
+            if let lEye = leftEye, let rEye = rightEye {
+                widthCandidates.append(hypot(lEye.x - rEye.x, lEye.y - rEye.y) * 1.62)
+            }
+            if let lEar = leftEar, let rEar = rightEar {
+                widthCandidates.append(hypot(lEar.x - rEar.x, lEar.y - rEar.y) * 0.98)
+            }
+            widthCandidates.append(shoulderWidth * 0.40)
+            heightCandidates.append(shoulderWidth * (isLikelyProfile ? 0.48 : 0.54))
+
+            let rawWidth = widthCandidates.reduce(0, +) / CGFloat(max(widthCandidates.count, 1))
+            let minWidth = shoulderWidth * (isLikelyProfile ? 0.20 : 0.22)
+            let maxWidth = shoulderWidth * (isLikelyProfile ? 0.44 : 0.50)
+            let minHeight = shoulderWidth * (isLikelyProfile ? 0.28 : 0.30)
+            let maxHeight = shoulderWidth * (isLikelyProfile ? 0.56 : 0.64)
+
+            let poseBasedWidth = max(minWidth, min(maxWidth, rawWidth))
+            let neckToNose = nose.map { hypot(neck.x - $0.x, neck.y - $0.y) } ?? (poseBasedWidth * (isLikelyProfile ? 0.30 : 0.34))
+            headWidth = max(minWidth, min(maxWidth, max(poseBasedWidth, neckToNose * (isLikelyProfile ? 1.22 : 1.34))))
+            let rawHeight = heightCandidates.reduce(0, +) / CGFloat(max(heightCandidates.count, 1))
+            headHeight = max(minHeight, min(maxHeight, max(rawHeight, headWidth * (isLikelyProfile ? 1.26 : 1.34))))
+            let offsetRatio: CGFloat
+            if leftEye != nil && rightEye != nil {
+                offsetRatio = 0.12
+            } else if isLikelyProfile {
+                offsetRatio = 0.10
+            } else if nose != nil {
+                offsetRatio = 0.20
+            } else {
+                offsetRatio = 0.38
+            }
+
+            let targetY = poseAnchoredCenter.y - headHeight * offsetRatio
+            let clampedY = min(max(targetY, neck.y - headHeight * (isLikelyProfile ? 0.46 : 0.52)),
+                               neck.y - headHeight * (isLikelyProfile ? 0.14 : 0.18))
+            center = CGPoint(x: poseAnchoredCenter.x, y: clampedY)
         }
 
+        // 3. Draw the Head Base
         let rect = CGRect(
-            x: center.x - headDiameter * 0.5,
-            y: center.y - headDiameter * 0.5,
-            width: headDiameter,
-            height: headDiameter
+            x: center.x - headWidth * 0.5,
+            y: center.y - headHeight * 0.5,
+            width: headWidth,
+            height: headHeight
         )
 
         let path = Path(ellipseIn: rect)
         context.fill(path, with: .color(Color.black.opacity(style == .manga ? 0.05 : 0.12)))
         context.stroke(path, with: .color(.black.opacity(style == .manga ? 0.9 : 0.86)), lineWidth: style == .manga ? 2.2 : 1.9)
 
+        // 4. Draw Manga Details
         if style == .manga {
             // Manga face construction guides: eye-line, nose-line, centre-line.
             drawFaceGuides(context: &context, points: points, faceRect: rect)
@@ -602,10 +664,10 @@ struct AnimeSketchRenderer: View {
             context.stroke(vGuide, with: .color(.black.opacity(0.45)), lineWidth: 1.0)
         }
 
-        // Neck line connection from head base to shoulders.
+        // 5. Draw Neck Lines
         if let leftShoulder = leftShoulder, let rightShoulder = rightShoulder {
             let neckHalfWidth = max(4, shoulderWidth * 0.08)
-            let neckBaseY = rect.maxY - (headDiameter * 0.03)
+            let neckBaseY = rect.maxY - (headHeight * 0.04)
 
             var leftNeck = Path()
             leftNeck.move(to: CGPoint(x: rect.midX - neckHalfWidth, y: neckBaseY))
@@ -618,7 +680,6 @@ struct AnimeSketchRenderer: View {
             context.stroke(rightNeck, with: .color(.black.opacity(style == .manga ? 0.62 : 0.48)), lineWidth: 1.25)
         }
     }
-
     private func canvasPoint(from normalizedPoint: CGPoint, canvasSize: CGSize) -> CGPoint {
         CGPoint(x: normalizedPoint.x * canvasSize.width, y: (1.0 - normalizedPoint.y) * canvasSize.height)
     }
