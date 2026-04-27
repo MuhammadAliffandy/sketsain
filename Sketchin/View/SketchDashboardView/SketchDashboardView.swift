@@ -222,6 +222,30 @@ struct SketchDashboardView: View {
         
         return finalImage
     }
+
+    @MainActor
+    private func renderSketchPreviewImage() -> UIImage? {
+        let screen = canvasView.window?.windowScene?.screen
+            ?? UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first?.screen
+        let scale = screen?.scale ?? 1
+        let fallbackSize = selectedImage.size.width > 0 ? selectedImage.size : CGSize(width: 1024, height: 1365)
+        let size = canvasView.bounds.size.width > 0 ? canvasView.bounds.size : (screen?.bounds.size ?? fallbackSize)
+
+        let rendererView = AnimeSketchSceneView(
+            selectedImage: selectedImage,
+            detector: detector,
+            savedJoints: existingJoints ?? [],
+            savedFaceBoundingBox: existingFaceBoundingBox,
+            selectedStyle: .manga
+        )
+        .frame(width: size.width, height: size.height)
+
+        let renderer = ImageRenderer(content: rendererView)
+        renderer.scale = scale
+        return renderer.uiImage
+    }
     
     private func saveToFileManager(image: UIImage , fileName: String) -> URL? {
         guard let data = image.pngData() else {
@@ -249,6 +273,7 @@ struct SketchDashboardView: View {
     private func saveSketchProject() {
     
         let uniqueID = UUID().uuidString
+        let previewUniqueID = "\(uniqueID)_preview"
         
         let descriptor = FetchDescriptor<Sketch>()
         let currentCount = (try? modelContext.fetchCount(descriptor)) ?? 0
@@ -258,6 +283,12 @@ struct SketchDashboardView: View {
         
         guard saveToFileManager(image: selectedImage, fileName: uniqueID) != nil else {
             print("❌ Failed to save image to disk")
+            return
+        }
+
+        guard let sketchPreviewImage = renderSketchPreviewImage(),
+              saveToFileManager(image: sketchPreviewImage, fileName: previewUniqueID) != nil else {
+            print("❌ Failed to save sketch preview image to disk")
             return
         }
 
@@ -292,6 +323,7 @@ struct SketchDashboardView: View {
         let newProject = Sketch(
             title: userTitle,
             imageFileName: uniqueID,
+            previewImageFileName: previewUniqueID,
             jointData: jointArrays,
             faceBoundingBox: faceBBox
         )

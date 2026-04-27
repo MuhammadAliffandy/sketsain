@@ -33,6 +33,7 @@ class Sketch {
     var id: UUID
     var title: String
     var imageFileName: String
+    var previewImageFileName: String?
     var createdAt: Date
     var jointData: [JointPoint]
 
@@ -53,12 +54,14 @@ class Sketch {
     init(
         title: String,
         imageFileName: String,
+        previewImageFileName: String? = nil,
         jointData: [JointPoint] = [],
         faceBoundingBox: CGRect? = nil
     ) {
         self.id = UUID()
         self.title = title
         self.imageFileName = imageFileName
+        self.previewImageFileName = previewImageFileName
         self.createdAt = Date()
         self.jointData = jointData
         self.faceBBoxX = faceBoundingBox?.origin.x

@@ -103,7 +103,8 @@ struct SketchCardView: View {
         // Load image only ONCE when the card appears
         .onAppear {
             if cachedImage == nil {
-                cachedImage = loadImageFromDisk(fileName: sketch.imageFileName)
+                let previewFileName = sketch.previewImageFileName ?? sketch.imageFileName
+                cachedImage = loadImageFromDisk(fileName: previewFileName)
             }
         }
     }
