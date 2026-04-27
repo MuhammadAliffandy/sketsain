@@ -17,6 +17,7 @@ struct SketchDashboardView: View {
     @Environment(\.modelContext) private var modelContext
     
     var existingJoints: [JointPoint]? = nil
+    var existingFaceBoundingBox: CGRect? = nil
     
     
     @State private var isMenuOpen: Bool = false
@@ -46,6 +47,7 @@ struct SketchDashboardView: View {
                         selectedImage: selectedImage,
                         detector: detector,
                         savedJoints: existingJoints ?? [],
+                        savedFaceBoundingBox: existingFaceBoundingBox,
                         selectedStyle: .manga
                     )
                     
@@ -197,6 +199,7 @@ struct SketchDashboardView: View {
             selectedImage: selectedImage,
             detector: detector,
             savedJoints: existingJoints ?? [],
+            savedFaceBoundingBox: existingFaceBoundingBox,
             selectedStyle: .manga
         )
         .frame(width: size.width, height: size.height)
@@ -243,45 +246,59 @@ struct SketchDashboardView: View {
     }
     
     
-    private func saveSketchProject()  {
-        let fileName = "Sketch_\(UUID().uuidString)"
-        
-        guard saveToFileManager(image: selectedImage, fileName: fileName) != nil else
-        {
-            print("Failed rendered data image")
-            return
-        }
-        
-        var jointArrays: [JointPoint] = []
-        
-        guard let observation = detector.humanObservation,
-              let recognizePoints = try? observation.recognizedPoints(.all) else{
-            print("AI data observation not found")
-            return
-        }
-        
-        
-        for (jointName, point) in recognizePoints {
-            if point.confidence > 0.2 {
-                let newJoint = JointPoint(
-                    jointName: jointName.rawValue.rawValue, coordinateX: point.location.x, coordinateY: point.location.y, depthZ: 0.0
-                )
-                
-                jointArrays.append(newJoint)
-            }
-        }
-        
-        
-        let newProject = Sketch(
-            title: fileName,
-            imageFileName: fileName,
-            jointData: jointArrays
-        )
-        
-        modelContext.insert(newProject)
+    private func saveSketchProject() {
     
-        print("SAVE SUCCESS")
-        printDatabaseStatusToConsole()
+        let uniqueID = UUID().uuidString
+        
+        let descriptor = FetchDescriptor<Sketch>()
+        let currentCount = (try? modelContext.fetchCount(descriptor)) ?? 0
+        
+        let userTitle = "Untitled \(currentCount)"
+        
+        
+        guard saveToFileManager(image: selectedImage, fileName: uniqueID) != nil else {
+            print("❌ Failed to save image to disk")
+            return
+        }
+
+        // --- Build joint array ---
+        var jointArrays: [JointPoint] = []
+
+        if let observation = detector.humanObservation,
+           let recognizedPoints = try? observation.recognizedPoints(.all) {
+            // Fresh live detection: save all confident joints with their confidence score.
+            for (jointName, point) in recognizedPoints where point.confidence > 0.2 {
+                jointArrays.append(JointPoint(
+                    jointName: jointName.rawValue.rawValue,
+                    coordinateX: point.location.x,
+                    coordinateY: point.location.y,
+                    depthZ: 0.0,
+                    confidence: point.confidence
+                ))
+            }
+        } else if let existing = existingJoints, !existing.isEmpty {
+            // Reopened sketch with no live detection: preserve the already-saved joints.
+            jointArrays = existing
+            print("♻️ Re-saving \(existing.count) preserved joint points")
+        } else {
+            print("⚠️ No joint data available — save aborted")
+            return
+        }
+
+        // --- Face bounding box ---
+        // Use live result first; fall back to the bbox that was passed in when opening.
+        let faceBBox = detector.faceBoundingBox ?? existingFaceBoundingBox
+
+        let newProject = Sketch(
+            title: userTitle,
+            imageFileName: uniqueID,
+            jointData: jointArrays,
+            faceBoundingBox: faceBBox
+        )
+
+        modelContext.insert(newProject)
+        print("✅ SAVE SUCCESS — \(jointArrays.count) joints, face bbox: \(faceBBox != nil)")
+        //printDatabaseStatusToConsole()
     }
     
     

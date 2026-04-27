@@ -11,15 +11,11 @@ import SwiftData
 @main
 struct SketchinApp: App {
     
-    @AppStorage("isFirstTime") private var isFirstTime: Bool = true
+
     
     var body: some Scene {
         WindowGroup {
-            if isFirstTime {
-                SplashView()
-            }else{
-                HomeView()
-            }
+            SplashView()
         }
         .modelContainer(for: Sketch.self)
     }

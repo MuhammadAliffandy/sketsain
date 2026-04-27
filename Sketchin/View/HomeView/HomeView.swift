@@ -41,6 +41,15 @@ struct HomeView: View {
     @FocusState private var isTextFieldFocused: Bool
     
     let fourColumn = Array(repeating: GridItem(.flexible(), spacing: 30), count: 4)
+
+    private var filteredSketches: [Sketch] {
+        let query = exploreSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return savedSketches }
+
+        return savedSketches.filter { sketch in
+            sketch.title.localizedCaseInsensitiveContains(query)
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -126,7 +135,7 @@ struct HomeView: View {
                 .background(Color(UIColor.systemGroupedBackground))
                 
                 ScrollView {
-                    if savedSketches.isEmpty{
+                    if savedSketches.isEmpty {
                         VStack(spacing: 20){
                             Spacer()
                             
@@ -149,29 +158,47 @@ struct HomeView: View {
                             
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                       
-                    
-                        
                     } else {
-                        LazyVGrid(columns: fourColumn, spacing: 30) {
-                            ForEach(savedSketches) { sketch in
-                                SketchCardView(
-                                    sketch: sketch,
-                                    isSelectionMode: $isSelectionMode,
-                                    selectedItems: $selectedItems,
-                                    editingSketchID: $editingSketchID,
-                                    editTitleText: $editTitleText,
-                                    onSaveRename: {
-                                        saveRenamedTitle(for: sketch)
-                                    },
-                                    onOpenSketch: {
-                                        sketchToOpen = sketch
-                                    }
-                                )
-                                // Move long press logic into the card struct
+                        if filteredSketches.isEmpty {
+                            VStack(spacing: 16) {
+                                Spacer()
+
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 48))
+                                    .foregroundStyle(.secondary)
+
+                                Text("No Results Found")
+                                    .font(.title2)
+                                    .bold()
+                                    .foregroundStyle(.secondary)
+
+                                Text("No sketch matches \"\(exploreSearchQuery)\"")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
                             }
+                            .padding()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            LazyVGrid(columns: fourColumn, spacing: 30) {
+                                ForEach(filteredSketches) { sketch in
+                                    SketchCardView(
+                                        sketch: sketch,
+                                        isSelectionMode: $isSelectionMode,
+                                        selectedItems: $selectedItems,
+                                        editingSketchID: $editingSketchID,
+                                        editTitleText: $editTitleText,
+                                        onSaveRename: {
+                                            saveRenamedTitle(for: sketch)
+                                        },
+                                        onOpenSketch: {
+                                            sketchToOpen = sketch
+                                        }
+                                    )
+                                    // Move long press logic into the card struct
+                                }
+                            }
+                            .padding(20)
                         }
-                        .padding(20)
                     }
                 }
                 .background(Color(UIColor.systemGroupedBackground))
@@ -208,7 +235,8 @@ struct HomeView: View {
                 SketchDashboardView(
                     selectedImage: savedImage,
                     detector: HumanBodyPose2DDetector(),
-                    existingJoints: selectedSketch.jointData
+                    existingJoints: selectedSketch.jointData,
+                    existingFaceBoundingBox: selectedSketch.savedFaceBoundingBox
                 )
             })
             

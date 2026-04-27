@@ -10,13 +10,14 @@ import SwiftUI
 struct SplashView: View {
     
     @State private var isReadyToNavigate: Bool = false
+    @AppStorage("isFirstTime") private var isFirstTime: Bool = true
     
     var body: some View {
         NavigationStack{
             VStack(spacing: 30) {
            
                 VStack(spacing : 20){
-                    Image("img_sketsain_logo")
+                    Image("img_logo")
                         .resizable()
                         .scaledToFill()
                         .frame(width: 200, height: 200)
@@ -28,7 +29,13 @@ struct SplashView: View {
             .navigationDestination(
                 isPresented: $isReadyToNavigate,
             ){
-                IdleView()
+                if isFirstTime {
+                    IdleView()
+                }else{
+                    HomeView()
+                }
+                
+            
             }
             .onAppear {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {

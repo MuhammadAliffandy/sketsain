@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		D0E754722F88E2D9004B4702 /* Sketchin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sketchin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D0E754722F88E2D9004B4702 /* Sketsain.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sketsain.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -40,7 +40,7 @@
 		D0E754732F88E2D9004B4702 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D0E754722F88E2D9004B4702 /* Sketchin.app */,
+				D0E754722F88E2D9004B4702 /* Sketsain.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -67,7 +67,7 @@
 			packageProductDependencies = (
 			);
 			productName = Sketchin;
-			productReference = D0E754722F88E2D9004B4702 /* Sketchin.app */;
+			productReference = D0E754722F88E2D9004B4702 /* Sketsain.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -269,7 +269,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fandy.Sketchin;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Sketsain;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -303,7 +303,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fandy.Sketchin;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Sketsain;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;

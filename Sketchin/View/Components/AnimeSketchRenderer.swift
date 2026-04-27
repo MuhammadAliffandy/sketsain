@@ -40,6 +40,8 @@ struct AnimeSketchRenderer: View {
 
     private var savedJointPoints: [VNHumanBodyPoseObservation.JointName: CGPoint] {
         savedJoints.reduce(into: [:]) { partialResult, joint in
+            // Skip joints that were saved with low confidence to avoid phantom limbs.
+            guard joint.confidence >= 0.35 else { return }
             let key = VNRecognizedPointKey(rawValue: joint.jointName)
             let jointName = VNHumanBodyPoseObservation.JointName(rawValue: key)
             partialResult[jointName] = CGPoint(x: joint.coordinateX, y: joint.coordinateY)
@@ -58,13 +60,18 @@ struct AnimeSketchRenderer: View {
 
             let adaptiveScale = max(0.72, min(1.95, activeLimbScale))
             let canvasReference = min(size.width, size.height)
+
+            // Layer 0: Body construction shapes
             drawTorso(
                 context: &context,
                 points: mappedPoints,
                 torsoWidthScale: activeLimbWidthProfile.torso * canvasReference * adaptiveScale
             )
+            drawShoulderGirdle(context: &context, points: mappedPoints)
+            drawHipGirdle(context: &context, points: mappedPoints)
             drawJointLineArt(context: &context, points: mappedPoints)
 
+            // Layer 2: Volumetric / sketch limbs
             let segments: [Segment] = [
                 Segment(a: .leftShoulder, b: .leftElbow, width: activeLimbWidthProfile.upperArm * canvasReference * adaptiveScale),
                 Segment(a: .leftElbow, b: .leftWrist, width: activeLimbWidthProfile.lowerArm * canvasReference * adaptiveScale),
@@ -84,6 +91,7 @@ struct AnimeSketchRenderer: View {
                 }
             }
 
+            // Layer 3: Head, hands, feet, joints
             drawHead(context: &context, points: mappedPoints, canvasSize: size)
             drawDetectedHands(context: &context, bodyPoints: mappedPoints, canvasSize: size)
             drawHandsAndFeetHints(context: &context, points: mappedPoints)
@@ -262,10 +270,10 @@ struct AnimeSketchRenderer: View {
         context: inout GraphicsContext,
         points: [VNHumanBodyPoseObservation.JointName: CGPoint]
     ) {
+        // Arm and leg skeleton chains (unchanged)
         let chains: [[VNHumanBodyPoseObservation.JointName]] = [
             [.leftWrist, .leftElbow, .leftShoulder, .neck, .rightShoulder, .rightElbow, .rightWrist],
-            [.leftAnkle, .leftKnee, .leftHip, .root, .rightHip, .rightKnee, .rightAnkle],
-            [.neck, .root]
+            [.leftAnkle, .leftKnee, .leftHip, .root, .rightHip, .rightKnee, .rightAnkle]
         ]
 
         let strokeWidth: CGFloat = style == .manga ? 2.0 : 1.5
@@ -288,6 +296,27 @@ struct AnimeSketchRenderer: View {
             }
 
             context.stroke(path, with: .color(ink(alpha)), style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
+        }
+
+        // Spine: natural S-curve based on shoulder vs hip lateral lean.
+        if let neck = points[.neck], let root = points[.root] {
+            let lSx = points[.leftShoulder]?.x ?? neck.x
+            let rSx = points[.rightShoulder]?.x ?? neck.x
+            let lHx = points[.leftHip]?.x ?? root.x
+            let rHx = points[.rightHip]?.x ?? root.x
+            let shoulderMidX = (lSx + rSx) * 0.5
+            let hipMidX = (lHx + rHx) * 0.5
+            // Lateral offset creates the S-curve twist
+            let lean = (shoulderMidX - hipMidX) * 0.38
+            let midY = (neck.y + root.y) * 0.5
+
+            var spinePath = Path()
+            spinePath.move(to: neck)
+            spinePath.addQuadCurve(
+                to: root,
+                control: CGPoint(x: (neck.x + root.x) * 0.5 - lean, y: midY)
+            )
+            context.stroke(spinePath, with: .color(ink(alpha)), style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
         }
     }
 
@@ -350,17 +379,21 @@ struct AnimeSketchRenderer: View {
         let startRadius: CGFloat
         let endRadius: CGFloat
         if isUpperLeg {
-            startRadius = width * 2.1
-            endRadius = width * 1.55
+            // Thigh: widest, tapers toward knee
+            startRadius = width * 1.90
+            endRadius = width * 1.38
         } else if isLowerLeg {
-            startRadius = width * 1.8
-            endRadius = width * 1.35
+            // Calf: full at top, narrows to ankle
+            startRadius = width * 1.62
+            endRadius = width * 1.16
         } else if isUpperArm {
-            startRadius = width * 1.7
-            endRadius = width * 1.3
+            // Bicep/tricep region
+            startRadius = width * 2.52
+            endRadius = width * 2.16
         } else {
-            startRadius = width * 1.45
-            endRadius = width * 1.12
+            // Forearm: slightly thinner than upper arm
+            startRadius = width * 1.28
+            endRadius = width * 0.98
         }
 
         // Leave visible joint spacing before and after limb.
@@ -559,8 +592,10 @@ struct AnimeSketchRenderer: View {
         context.fill(path, with: .color(Color.black.opacity(style == .manga ? 0.05 : 0.12)))
         context.stroke(path, with: .color(.black.opacity(style == .manga ? 0.9 : 0.86)), lineWidth: style == .manga ? 2.2 : 1.9)
 
-        // Head center guide (optional sketch axis)
         if style == .manga {
+            // Manga face construction guides: eye-line, nose-line, centre-line.
+            drawFaceGuides(context: &context, points: points, faceRect: rect)
+
             var vGuide = Path()
             vGuide.move(to: CGPoint(x: rect.midX, y: rect.minY + rect.height * 0.08))
             vGuide.addLine(to: CGPoint(x: rect.midX, y: rect.maxY - rect.height * 0.08))
@@ -783,5 +818,130 @@ struct AnimeSketchRenderer: View {
             let rect = CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
             context.stroke(Path(ellipseIn: rect), with: .color(.black.opacity(0.84)), lineWidth: 1.25)
         }
+    }
+
+    // MARK: - Line of Action
+
+    /// Draws the classical figure-drawing gesture line: a single flowing bezier
+    /// from the head/nose through the spine down to the feet, giving the artist
+    /// the overall body flow at a glance.
+    private func drawLineOfAction(
+        context: inout GraphicsContext,
+        points: [VNHumanBodyPoseObservation.JointName: CGPoint],
+        canvasSize: CGSize
+    ) {
+        // Top anchor: nose > neck
+        guard let topAnchor = points[.nose] ?? points[.neck] else { return }
+
+        // Bottom anchor: midpoint of ankles > root
+        let bottomAnchor: CGPoint
+        if let la = points[.leftAnkle], let ra = points[.rightAnkle] {
+            bottomAnchor = CGPoint(x: (la.x + ra.x) * 0.5, y: (la.y + ra.y) * 0.5)
+        } else if let la = points[.leftAnkle] { bottomAnchor = la }
+        else if let ra = points[.rightAnkle] { bottomAnchor = ra }
+        else if let root = points[.root] { bottomAnchor = root }
+        else { return }
+
+        // Control points anchored at shoulder-mid and hip-mid to capture body lean
+        let lSx = points[.leftShoulder]?.x ?? topAnchor.x
+        let rSx = points[.rightShoulder]?.x ?? topAnchor.x
+        let lSy = points[.leftShoulder]?.y ?? topAnchor.y
+        let rSy = points[.rightShoulder]?.y ?? topAnchor.y
+        let shoulderMid = CGPoint(x: (lSx + rSx) * 0.5, y: (lSy + rSy) * 0.5)
+
+        let lHx = points[.leftHip]?.x ?? bottomAnchor.x
+        let rHx = points[.rightHip]?.x ?? bottomAnchor.x
+        let lHy = points[.leftHip]?.y ?? bottomAnchor.y
+        let rHy = points[.rightHip]?.y ?? bottomAnchor.y
+        let hipMid = CGPoint(x: (lHx + rHx) * 0.5, y: (lHy + rHy) * 0.5)
+
+        var path = Path()
+        path.move(to: topAnchor)
+        path.addCurve(to: bottomAnchor, control1: shoulderMid, control2: hipMid)
+
+        // Light dashed stroke — a guide, not a body part
+        context.stroke(
+            path,
+            with: .color(ink(0.16)),
+            style: StrokeStyle(lineWidth: 1.4, lineCap: .round, dash: [8, 5])
+        )
+    }
+
+    // MARK: - Shoulder Girdle (clavicle arc)
+
+    /// Draws a curved arc from left shoulder up through the neck to right shoulder,
+    /// representing the clavicles / shoulder girdle.
+    private func drawShoulderGirdle(
+        context: inout GraphicsContext,
+        points: [VNHumanBodyPoseObservation.JointName: CGPoint]
+    ) {
+        guard let lShoulder = points[.leftShoulder],
+              let rShoulder = points[.rightShoulder],
+              let neck = points[.neck] else { return }
+
+        let controlLift = max(8, hypot(lShoulder.x - rShoulder.x, lShoulder.y - rShoulder.y) * 0.14)
+        let ctrl = CGPoint(x: neck.x, y: neck.y - controlLift)
+
+        var path = Path()
+        path.move(to: lShoulder)
+        path.addQuadCurve(to: rShoulder, control: ctrl)
+
+        let alpha: Double = style == .manga ? 0.38 : 0.28
+        context.stroke(path, with: .color(ink(alpha)), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+    }
+
+    // MARK: - Hip Girdle (pelvis arc)
+
+    /// Draws a subtle curved arc connecting left hip through root to right hip,
+    /// representing the pelvis / hip girdle.
+    private func drawHipGirdle(
+        context: inout GraphicsContext,
+        points: [VNHumanBodyPoseObservation.JointName: CGPoint]
+    ) {
+        guard let lHip = points[.leftHip],
+              let rHip = points[.rightHip],
+              let root = points[.root] else { return }
+
+        let controlDrop = max(6, hypot(lHip.x - rHip.x, lHip.y - rHip.y) * 0.12)
+        let ctrl = CGPoint(x: root.x, y: root.y + controlDrop)
+
+        var path = Path()
+        path.move(to: lHip)
+        path.addQuadCurve(to: rHip, control: ctrl)
+
+        let alpha: Double = style == .manga ? 0.38 : 0.28
+        context.stroke(path, with: .color(ink(alpha)), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+    }
+
+    // MARK: - Face Construction Guides
+
+    /// Draws manga-style head construction lines inside the face oval:
+    /// eye-line (horizontal), nose-line (horizontal), and vertical centre-line.
+    private func drawFaceGuides(
+        context: inout GraphicsContext,
+        points: [VNHumanBodyPoseObservation.JointName: CGPoint],
+        faceRect: CGRect
+    ) {
+        let alpha: Double = 0.30
+        let lw: CGFloat = 0.85
+
+        // Horizontal eye-line — at 40 % down from top of head oval
+        let eyeY: CGFloat
+        if let lEye = points[.leftEye], let rEye = points[.rightEye] {
+            eyeY = (lEye.y + rEye.y) * 0.5
+        } else {
+            eyeY = faceRect.minY + faceRect.height * 0.40
+        }
+        var eyeLine = Path()
+        eyeLine.move(to: CGPoint(x: faceRect.minX + faceRect.width * 0.08, y: eyeY))
+        eyeLine.addLine(to: CGPoint(x: faceRect.maxX - faceRect.width * 0.08, y: eyeY))
+        context.stroke(eyeLine, with: .color(ink(alpha)), lineWidth: lw)
+
+        // Horizontal nose-line — at 65 % down
+        let noseY: CGFloat = points[.nose]?.y ?? (faceRect.minY + faceRect.height * 0.65)
+        var noseLine = Path()
+        noseLine.move(to: CGPoint(x: faceRect.minX + faceRect.width * 0.12, y: noseY))
+        noseLine.addLine(to: CGPoint(x: faceRect.maxX - faceRect.width * 0.12, y: noseY))
+        context.stroke(noseLine, with: .color(ink(alpha)), lineWidth: lw)
     }
 }

@@ -4,7 +4,7 @@ struct AnimeSketchSceneView: View {
     let selectedImage: UIImage
     @ObservedObject var detector: HumanBodyPose2DDetector
     var savedJoints: [JointPoint] = []
-
+    var savedFaceBoundingBox: CGRect? = nil
     var selectedStyle: AnimeSketchRenderer.SketchStyle = .manga
     var showSourceImage: Bool = false
 
@@ -25,9 +25,9 @@ struct AnimeSketchSceneView: View {
                 style: selectedStyle,
                 limbScale: detector.bodyScale,
                 limbWidthProfile: detector.limbWidthProfile,
-                detectedFaceBoundingBox: detector.faceBoundingBox,
-                handObservations: detector.handObservations,
-                inkColor: .black
+                // Live face bbox takes priority; fall back to saved bbox for reopened sketches.
+                detectedFaceBoundingBox: detector.faceBoundingBox ?? savedFaceBoundingBox,
+                handObservations: detector.handObservations
             )
             .blendMode(.multiply)
         }

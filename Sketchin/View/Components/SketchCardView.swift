@@ -52,6 +52,7 @@ struct SketchCardView: View {
                 } else {
                     Text(sketch.title)
                         .font(.headline)
+                        .lineLimit(1)
                         .onTapGesture(count: 2) {
                             if !isSelectionMode {
                                 editingSketchID = sketch.id
