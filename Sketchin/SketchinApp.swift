@@ -10,12 +10,12 @@ import SwiftData
 
 @main
 struct SketchinApp: App {
-    
 
     
     var body: some Scene {
         WindowGroup {
             SplashView()
+                .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea(.all))
         }
         .modelContainer(for: Sketch.self)
     }

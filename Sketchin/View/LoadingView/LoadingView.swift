@@ -43,7 +43,8 @@ struct LoadingView: View {
                 
                 
             }
-            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(UIColor.systemGroupedBackground))
             .onAppear {
                 Task {
                     withAnimation(.linear(duration: 2.0)) {

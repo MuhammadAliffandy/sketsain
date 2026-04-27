@@ -26,6 +26,8 @@ struct SplashView: View {
                 
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(UIColor.systemGroupedBackground))
             .navigationDestination(
                 isPresented: $isReadyToNavigate,
             ){
@@ -45,6 +47,7 @@ struct SplashView: View {
             
         }
         .padding()
+
     }
 }
 

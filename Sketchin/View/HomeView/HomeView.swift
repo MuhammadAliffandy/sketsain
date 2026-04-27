@@ -202,7 +202,9 @@ struct HomeView: View {
                     }
                 }
                 .background(Color(UIColor.systemGroupedBackground))
+                
             }
+            .toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarHidden(true)
             .fullScreenCover(isPresented: $isShowingCamera) {
                 CameraPicker(selectedImage: $selectedImage)
